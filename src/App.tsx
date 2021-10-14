@@ -7,11 +7,13 @@ import {saveAs} from 'file-saver';
 
 function App() {
   const handleClick = () => {
-    const document = htmlDocxConverter(htmlContent);
-    Packer.toBlob(document).then((blob) => {
-      // saveAs from FileSaver will download the file
-      saveAs(blob, 'test-document.docx');
-    });
+    htmlDocxConverter(htmlContent)
+      .then(document => {
+        Packer.toBlob(document).then((blob) => {
+          // saveAs from FileSaver will download the file
+          saveAs(blob, 'test-document.docx');
+        });
+      })
   }
 
   return (

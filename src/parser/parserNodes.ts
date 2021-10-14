@@ -37,6 +37,7 @@ export interface TextRunParseNode extends ParseNodeBase {
 export interface ImageParseNode extends ParseNodeBase {
   type: typeof ParseNodeTypes.image;
   src: string;
+  data?: ArrayBuffer;
 }
 
 export type ParseNode = StructureParseNode | TextRunParseNode | ImageParseNode;
@@ -47,7 +48,7 @@ export const isStructureNode = (node: ParseNode): node is StructureParseNode => 
 export const isTextNode = (node: ParseNode): node is TextRunParseNode => {
   return node?.type === ParseNodeTypes.textRun;
 }
-export const isImageNode = (node: ParseNode): node is TextRunParseNode => {
+export const isImageNode = (node: ParseNode): node is ImageParseNode => {
   return node?.type === ParseNodeTypes.image;
 }
 

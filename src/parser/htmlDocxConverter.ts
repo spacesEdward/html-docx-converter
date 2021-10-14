@@ -1,6 +1,6 @@
 import {
   Document,
-  HeadingLevel,
+  HeadingLevel, ImageRun,
   ISectionOptions,
   Paragraph,
   ParagraphChild,
@@ -10,7 +10,7 @@ import {
 } from 'docx';
 import {tokenize} from 'simple-html-tokenizer';
 import tokenParser from "./tokenParser";
-import {ParseNode, ParseNodeTypes, StructureTypes} from "./parserNodes";
+import {ImageParseNode, isImageNode, isStructureNode, ParseNode, ParseNodeTypes, StructureTypes} from "./parserNodes";
 
 
 export function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
@@ -25,13 +25,13 @@ const toRuns = (node: ParseNode): ParagraphChild[] => {
       ];
     case ParseNodeTypes.image:
       return [
-        // new ImageRun({
-        //   data: fs.readFileSync(node.src),
-        //   transformation: {
-        //     width: 100,
-        //     height: 100,
-        //   }
-        // })
+        new ImageRun({
+          data: node.data!,
+          transformation: {
+            width: 100,
+            height: 100,
+          }
+        })
       ];
     default:
       return node.children.flatMap(toRuns);
@@ -110,9 +110,31 @@ const toParagraphs = (node: ParseNode, depth: number = -1): Paragraph[] => {
   }
 }
 
-// const convertTree = (tree: ParseNode[])
+const findImages = (node: ParseNode): ImageParseNode[] => {
+  if (isImageNode(node)) {
+    return [node];
+  }
+  if (isStructureNode(node)) {
+    return node.children.flatMap(findImages);
+  }
+  return [];
+}
 
-const parseSections = (htmlString: string): ISectionOptions[] => {
+const loadImages = (parseTree: ParseNode[]) => {
+  const imageNodes = parseTree.flatMap(findImages);
+
+  const promises = imageNodes.map(node =>
+  fetch(node.src)
+    .then((resp) => resp.arrayBuffer())
+    .then(data => {
+      node.data = data;
+      return node;
+    })
+  )
+  return Promise.all(promises)
+}
+
+const parseSections = (htmlString: string): Promise<ISectionOptions[]> => {
 
   const tokens = tokenize(htmlString);
   console.log('------- STARTING PARSE --------', {
@@ -120,19 +142,22 @@ const parseSections = (htmlString: string): ISectionOptions[] => {
   })
   const parseTree = tokenParser(tokens[Symbol.iterator]());
 
-  console.log({parseTree})
+  return loadImages(parseTree)
+    .then(() => {
+      console.log({parseTree})
 
-  return [
-    {
-      properties: {
-        type: SectionType.NEXT_PAGE,
-      },
-      children:
-        parseTree.flatMap(node => {
-          return toParagraphs(node)
-        }),
-    }
-  ]
+      return [
+        {
+          properties: {
+            type: SectionType.NEXT_PAGE,
+          },
+          children:
+            parseTree.flatMap(node => {
+              return toParagraphs(node)
+            }),
+        }
+      ]
+    })
 }
 
 const ToCSection = (): ISectionOptions => {
@@ -154,8 +179,9 @@ const ToCSection = (): ISectionOptions => {
 }
 
 export default function htmlDocxConverter(htmlString: string) {
-
-  return new Document({
+  return parseSections(htmlString)
+    .then(sections =>
+      new Document({
     styles: {
       default: {
         document: {
@@ -211,8 +237,13 @@ export default function htmlDocxConverter(htmlString: string) {
       },
     },
     sections: [
-        ToCSection(),
-        ...parseSections(htmlString),
-      ]
-  });
+      ToCSection(),
+      ...sections,
+]
+}
+)
+    );
+
+
+
 }
