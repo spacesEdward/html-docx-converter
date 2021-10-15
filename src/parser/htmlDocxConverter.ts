@@ -244,65 +244,66 @@ const ToCSection = (): ISectionOptions => {
   };
 };
 
-export default function htmlDocxConverter(htmlString: string) {
+export default function htmlDocxConverter(htmlString: string, styles: string) {
   return parseSections(htmlString).then(
     (sections) =>
       new Document({
-        styles: {
-          default: {
-            document: {
-              run: {
-                font: "Arial",
-                // This is measured in 1/2 of a pt
-                size: 20,
-              },
-              paragraph: {
-                spacing: {
-                  // 240 is a single line, can't figure out why though. Doesn't seem to be about size
-                  line: 276,
-                  // This is measured in 1/20 of a pt
-                  after: 240,
-                },
-              },
-            },
-            title: {
-              run: {
-                // This is measured in 1/2 of a pt
-                size: 72,
-                bold: true,
-                color: "041E42",
-              },
-              paragraph: {
-                spacing: {
-                  before: 3600,
-                  line: 276,
-                  after: 120,
-                },
-              },
-            },
-            heading1: {
-              run: {
-                size: 40,
-                bold: true,
-                color: "041E42",
-              },
-              paragraph: {
-                // No fine control over border, just this
-                thematicBreak: true,
-                spacing: {
-                  line: 276,
-                  after: 120,
-                },
-              },
-              basedOn: "Normal",
-            },
-            listParagraph: {
-              paragraph: {
-                contextualSpacing: true,
-              },
-            },
-          },
-        },
+        externalStyles: styles,
+        // styles: {
+        //   default: {
+        //     document: {
+        //       run: {
+        //         font: "Arial",
+        //         // This is measured in 1/2 of a pt
+        //         size: 20,
+        //       },
+        //       paragraph: {
+        //         spacing: {
+        //           // 240 is a single line, can't figure out why though. Doesn't seem to be about size
+        //           line: 276,
+        //           // This is measured in 1/20 of a pt
+        //           after: 240,
+        //         },
+        //       },
+        //     },
+        //     title: {
+        //       run: {
+        //         // This is measured in 1/2 of a pt
+        //         size: 72,
+        //         bold: true,
+        //         color: "041E42",
+        //       },
+        //       paragraph: {
+        //         spacing: {
+        //           before: 3600,
+        //           line: 276,
+        //           after: 120,
+        //         },
+        //       },
+        //     },
+        //     heading1: {
+        //       run: {
+        //         size: 40,
+        //         bold: true,
+        //         color: "041E42",
+        //       },
+        //       paragraph: {
+        //         // No fine control over border, just this
+        //         thematicBreak: true,
+        //         spacing: {
+        //           line: 276,
+        //           after: 120,
+        //         },
+        //       },
+        //       basedOn: "Normal",
+        //     },
+        //     listParagraph: {
+        //       paragraph: {
+        //         contextualSpacing: true,
+        //       },
+        //     },
+        //   },
+        // },
         sections: [ToCSection(), ...sections],
       })
   );
