@@ -1,16 +1,4 @@
-export const StructureTypes = {
-  paragraph: "Paragraph",
-  heading1: "Heading 1",
-  heading2: "Heading 2",
-  heading3: "Heading 3",
-  heading4: "Heading 4",
-  orderedList: "Ordered List",
-  unorderedList: "Unordered List",
-  structure: "Container",
-} as const;
-
-type StructureTypesObj = typeof StructureTypes;
-type StructureTypesList = StructureTypesObj[keyof StructureTypesObj];
+import { HeadingLevel } from "docx";
 
 export const ParseNodeTypes = {
   structure: "structure",
@@ -23,10 +11,18 @@ interface ParseNodeBase {
   closed: boolean;
 }
 
+export interface StructureParseNodeAttributes {
+  headingLevel?: HeadingLevel;
+  paragraph?: boolean;
+  list?: boolean;
+  bold?: boolean;
+  italic?: boolean;
+}
+
 export interface StructureParseNode extends ParseNodeBase {
   type: typeof ParseNodeTypes.structure;
   children: ParseNode[];
-  structureType: StructureTypesList;
+  attributes: StructureParseNodeAttributes;
 }
 
 export interface TextRunParseNode extends ParseNodeBase {
@@ -59,11 +55,11 @@ export const isImageNode = (node: ParseNode): node is ImageParseNode => {
 };
 
 export const createContainerNode = (
-  structureType: StructureTypesList
+  attributes: StructureParseNodeAttributes = {}
 ): StructureParseNode => ({
   type: ParseNodeTypes.structure,
   children: [],
-  structureType,
+  attributes,
   closed: false,
 });
 export const createTextRunNode = (content: string = ""): TextRunParseNode => ({

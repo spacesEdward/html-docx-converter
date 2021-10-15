@@ -1,40 +1,59 @@
-import { StartTag, Token } from "simple-html-tokenizer";
+import {StartTag, Token} from "simple-html-tokenizer";
 import {
   createContainerNode,
   createImageNode,
   createTextRunNode,
-  isImageNode,
   isStructureNode,
-  isTextNode,
   ParseNode,
   ParseNodeTypes,
-  StructureTypes,
 } from "./parserNodes";
+import {HeadingLevel} from "docx";
 
 const createNode = (token: StartTag): ParseNode | null => {
   switch (token.tagName) {
     case "h1":
-      return createContainerNode(StructureTypes.heading1);
+      return createContainerNode({
+        headingLevel: HeadingLevel.HEADING_1
+      });
     case "h2":
-      return createContainerNode(StructureTypes.heading2);
+      return createContainerNode({
+        headingLevel: HeadingLevel.HEADING_2
+      });
     case "h3":
-      return createContainerNode(StructureTypes.heading3);
+      return createContainerNode({
+        headingLevel: HeadingLevel.HEADING_3
+      });
     case "h4":
-      return createContainerNode(StructureTypes.heading4);
+      return createContainerNode({
+        headingLevel: HeadingLevel.HEADING_4
+      });
+    case "h5":
+      return createContainerNode({
+        headingLevel: HeadingLevel.HEADING_5
+      });
     case "p":
-      return createContainerNode(StructureTypes.paragraph);
+      return createContainerNode({
+        paragraph: true,
+      });
     case "li":
     case "div":
     case "span":
+      return createContainerNode();
     case "strong":
     case "b":
+      return createContainerNode({
+        bold: true,
+      });
     case "i":
     case "em":
-      return createContainerNode(StructureTypes.structure);
+      return createContainerNode({
+        italic: true,
+      });
     case "ul":
-      return createContainerNode(StructureTypes.unorderedList);
     case "ol":
-      return createContainerNode(StructureTypes.orderedList);
+      return createContainerNode({
+        list: true,
+      });
     case "img":
       console.log(token);
       return createImageNode(
@@ -48,19 +67,21 @@ const createNode = (token: StartTag): ParseNode | null => {
 export const pruneNode = (node: ParseNode): ParseNode[] => {
   switch (node.type) {
     case ParseNodeTypes.textRun:
+      // trim empty nodes
       const trimmedContent = node.content.trim();
       if (trimmedContent.length > 0) {
-        node.content = trimmedContent;
         return [node];
       }
       break;
     case ParseNodeTypes.image:
+      // trim images with no source
       if (node.src.length > 0) {
         return [node];
       }
       break;
     case ParseNodeTypes.structure:
       node.children = node.children.flatMap(pruneNode);
+      // trim nodes with no text children
       if (node.children.length) {
         return [node]; // TODO prune structure nodes
       }

@@ -9,15 +9,15 @@ import {
   TableOfContents,
   TextRun,
 } from "docx";
-import { tokenize } from "simple-html-tokenizer";
-import tokenParser, { pruneNode } from "./tokenParser";
+import {tokenize} from "simple-html-tokenizer";
+import tokenParser, {pruneNode} from "./tokenParser";
 import {
   ImageParseNode,
   isImageNode,
   isStructureNode,
   ParseNode,
   ParseNodeTypes,
-  StructureTypes,
+  StructureParseNodeAttributes,
 } from "./parserNodes";
 
 export function notEmpty<TValue>(
@@ -31,10 +31,14 @@ interface ImageSize {
   height: number;
 }
 
-const toRuns = (node: ParseNode): ParagraphChild[] => {
+const toRuns = (node: ParseNode, attributes: StructureParseNodeAttributes): ParagraphChild[] => {
   switch (node.type) {
     case ParseNodeTypes.textRun:
-      return [new TextRun(node.content)];
+      return [new TextRun({
+        text: node.content,
+        bold: attributes.bold,
+        italics: attributes.italic,
+      })];
     case ParseNodeTypes.image:
       const data = node.data
       if (data) {
@@ -51,17 +55,17 @@ const toRuns = (node: ParseNode): ParagraphChild[] => {
         return [];
       }
     default:
-      return node.children.flatMap(toRuns);
+      return node.children.flatMap(c => toRuns(c, {...attributes, ...node.attributes}));
   }
 };
 
-const toParagraphs = (node: ParseNode, depth: number = -1): Paragraph[] => {
+const toParagraphs = (node: ParseNode, depth: number = -1, attributes: StructureParseNodeAttributes = {}): Paragraph[] => {
   switch (node.type) {
     case ParseNodeTypes.textRun:
     case ParseNodeTypes.image:
       return [
         new Paragraph({
-          children: toRuns(node),
+          children: toRuns(node, attributes),
           bullet:
             depth >= 0
               ? {
@@ -71,77 +75,24 @@ const toParagraphs = (node: ParseNode, depth: number = -1): Paragraph[] => {
         }),
       ];
     default:
-      switch (node.structureType) {
-        case StructureTypes.heading1:
-          return [
-            new Paragraph({
-              children: node.children.flatMap(toRuns),
-              heading: HeadingLevel.HEADING_1,
-              bullet:
-                depth >= 0
-                  ? {
-                      level: depth,
-                    }
-                  : undefined,
-            }),
-          ];
-        case StructureTypes.heading2:
-          return [
-            new Paragraph({
-              children: node.children.flatMap(toRuns),
-              heading: HeadingLevel.HEADING_2,
-              bullet:
-                depth >= 0
-                  ? {
-                      level: depth,
-                    }
-                  : undefined,
-            }),
-          ];
-        case StructureTypes.heading3:
-          return [
-            new Paragraph({
-              children: node.children.flatMap(toRuns),
-              heading: HeadingLevel.HEADING_3,
-              bullet:
-                depth >= 0
-                  ? {
-                      level: depth,
-                    }
-                  : undefined,
-            }),
-          ];
-        case StructureTypes.heading4:
-          return [
-            new Paragraph({
-              children: node.children.flatMap(toRuns),
-              heading: HeadingLevel.HEADING_4,
-              bullet:
-                depth >= 0
-                  ? {
-                      level: depth,
-                    }
-                  : undefined,
-            }),
-          ];
-        case StructureTypes.paragraph:
-          return [
-            new Paragraph({
-              children: node.children.flatMap(toRuns),
-              bullet:
-                depth >= 0
-                  ? {
-                      level: depth,
-                    }
-                  : undefined,
-            }),
-          ];
-        case "Ordered List":
-        case "Unordered List":
-          return node.children.flatMap((n) => toParagraphs(n, depth + 1));
-        default:
-          return node.children.flatMap((n) => toParagraphs(n, depth));
+      if (node.attributes.headingLevel || node.attributes.paragraph) {
+        return [
+          new Paragraph({
+            children: node.children.flatMap(c => toRuns(c, {...attributes, ...node.attributes})),
+            heading: node.attributes.headingLevel,
+            bullet:
+              depth >= 0
+                ? {
+                  level: depth,
+                }
+                : undefined,
+          }),
+        ];
       }
+      if (node.attributes.list) {
+        return node.children.flatMap((n) => toParagraphs(n, depth + 1, {...attributes, ...node.attributes}));
+      }
+      return node.children.flatMap((n) => toParagraphs(n, depth, {...attributes, ...node.attributes}));
   }
 };
 

@@ -22,7 +22,7 @@ function App() {
     <div className="App">
       <h1>Doc conversion test</h1>
       <button onClick={handleClick}>generate</button>
-      <div dangerouslySetInnerHTML={{__html: content}}/>
+      <div className="content" dangerouslySetInnerHTML={{__html: content}}/>
     </div>
   );
 }
