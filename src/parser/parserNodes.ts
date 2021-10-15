@@ -1,21 +1,21 @@
 export const StructureTypes = {
-  paragraph: 'Paragraph',
-  heading1: 'Heading 1',
-  heading2: 'Heading 2',
-  heading3: 'Heading 3',
-  heading4: 'Heading 4',
-  orderedList: 'Ordered List',
-  unorderedList: 'Unordered List',
-  structure: 'Container',
+  paragraph: "Paragraph",
+  heading1: "Heading 1",
+  heading2: "Heading 2",
+  heading3: "Heading 3",
+  heading4: "Heading 4",
+  orderedList: "Ordered List",
+  unorderedList: "Unordered List",
+  structure: "Container",
 } as const;
 
 type StructureTypesObj = typeof StructureTypes;
 type StructureTypesList = StructureTypesObj[keyof StructureTypesObj];
 
 export const ParseNodeTypes = {
-  structure: 'structure',
-  textRun: 'textRun',
-  image: 'image',
+  structure: "structure",
+  textRun: "textRun",
+  image: "image",
 } as const;
 
 interface ParseNodeBase {
@@ -37,34 +37,42 @@ export interface TextRunParseNode extends ParseNodeBase {
 export interface ImageParseNode extends ParseNodeBase {
   type: typeof ParseNodeTypes.image;
   src: string;
-  data?: ArrayBuffer;
+  data?: {
+    file: ArrayBuffer;
+    width: number;
+    height: number;
+  };
 }
 
 export type ParseNode = StructureParseNode | TextRunParseNode | ImageParseNode;
 
-export const isStructureNode = (node: ParseNode): node is StructureParseNode => {
+export const isStructureNode = (
+  node: ParseNode
+): node is StructureParseNode => {
   return node?.type === ParseNodeTypes.structure;
-}
+};
 export const isTextNode = (node: ParseNode): node is TextRunParseNode => {
   return node?.type === ParseNodeTypes.textRun;
-}
+};
 export const isImageNode = (node: ParseNode): node is ImageParseNode => {
   return node?.type === ParseNodeTypes.image;
-}
+};
 
-export const createContainerNode = (structureType: StructureTypesList): StructureParseNode => ({
+export const createContainerNode = (
+  structureType: StructureTypesList
+): StructureParseNode => ({
   type: ParseNodeTypes.structure,
   children: [],
   structureType,
   closed: false,
-})
-export const createTextRunNode = (content: string = ''): TextRunParseNode => ({
+});
+export const createTextRunNode = (content: string = ""): TextRunParseNode => ({
   type: ParseNodeTypes.textRun,
   content,
   closed: false,
-})
-export const createImageNode = (src: string = ''): ImageParseNode => ({
+});
+export const createImageNode = (src: string = ""): ImageParseNode => ({
   type: ParseNodeTypes.image,
   src,
   closed: false,
-})
+});

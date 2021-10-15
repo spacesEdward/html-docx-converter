@@ -1,42 +1,59 @@
 import {
   Document,
-  HeadingLevel, ImageRun,
+  HeadingLevel,
+  ImageRun,
   ISectionOptions,
   Paragraph,
   ParagraphChild,
   SectionType,
   TableOfContents,
   TextRun,
-} from 'docx';
-import {tokenize} from 'simple-html-tokenizer';
-import tokenParser from "./tokenParser";
-import {ImageParseNode, isImageNode, isStructureNode, ParseNode, ParseNodeTypes, StructureTypes} from "./parserNodes";
+} from "docx";
+import { tokenize } from "simple-html-tokenizer";
+import tokenParser, { pruneNode } from "./tokenParser";
+import {
+  ImageParseNode,
+  isImageNode,
+  isStructureNode,
+  ParseNode,
+  ParseNodeTypes,
+  StructureTypes,
+} from "./parserNodes";
 
-
-export function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
+export function notEmpty<TValue>(
+  value: TValue | null | undefined
+): value is TValue {
   return value !== null && value !== undefined;
+}
+
+interface ImageSize {
+  width: number;
+  height: number;
 }
 
 const toRuns = (node: ParseNode): ParagraphChild[] => {
   switch (node.type) {
     case ParseNodeTypes.textRun:
-      return [
-        new TextRun(node.content),
-      ];
+      return [new TextRun(node.content)];
     case ParseNodeTypes.image:
-      return [
-        new ImageRun({
-          data: node.data!,
-          transformation: {
-            width: 100,
-            height: 100,
-          }
-        })
-      ];
+      const data = node.data
+      if (data) {
+        const scaled = resize(data, {width: 600, height: 600})
+
+        return [
+          new ImageRun({
+            data: data.file,
+            transformation: scaled,
+          }),
+        ];
+      } else {
+        console.error('Attempted to convert unloaded image')
+        return [];
+      }
     default:
       return node.children.flatMap(toRuns);
   }
-}
+};
 
 const toParagraphs = (node: ParseNode, depth: number = -1): Paragraph[] => {
   switch (node.type) {
@@ -45,11 +62,14 @@ const toParagraphs = (node: ParseNode, depth: number = -1): Paragraph[] => {
       return [
         new Paragraph({
           children: toRuns(node),
-          bullet: depth >= 0 ? {
-            level: depth
-          } : undefined,
-        })
-      ]
+          bullet:
+            depth >= 0
+              ? {
+                  level: depth,
+                }
+              : undefined,
+        }),
+      ];
     default:
       switch (node.structureType) {
         case StructureTypes.heading1:
@@ -57,58 +77,73 @@ const toParagraphs = (node: ParseNode, depth: number = -1): Paragraph[] => {
             new Paragraph({
               children: node.children.flatMap(toRuns),
               heading: HeadingLevel.HEADING_1,
-              bullet: depth >= 0 ? {
-                level: depth
-              } : undefined,
-            })
-          ]
+              bullet:
+                depth >= 0
+                  ? {
+                      level: depth,
+                    }
+                  : undefined,
+            }),
+          ];
         case StructureTypes.heading2:
           return [
             new Paragraph({
               children: node.children.flatMap(toRuns),
               heading: HeadingLevel.HEADING_2,
-              bullet: depth >= 0 ? {
-                level: depth
-              } : undefined,
-            })
-          ]
+              bullet:
+                depth >= 0
+                  ? {
+                      level: depth,
+                    }
+                  : undefined,
+            }),
+          ];
         case StructureTypes.heading3:
           return [
             new Paragraph({
               children: node.children.flatMap(toRuns),
               heading: HeadingLevel.HEADING_3,
-              bullet: depth >= 0 ? {
-                level: depth
-              } : undefined,
-            })
-          ]
+              bullet:
+                depth >= 0
+                  ? {
+                      level: depth,
+                    }
+                  : undefined,
+            }),
+          ];
         case StructureTypes.heading4:
           return [
             new Paragraph({
               children: node.children.flatMap(toRuns),
               heading: HeadingLevel.HEADING_4,
-              bullet: depth >= 0 ? {
-                level: depth
-              } : undefined,
-            })
-          ]
+              bullet:
+                depth >= 0
+                  ? {
+                      level: depth,
+                    }
+                  : undefined,
+            }),
+          ];
         case StructureTypes.paragraph:
           return [
             new Paragraph({
               children: node.children.flatMap(toRuns),
-              bullet: depth >= 0 ? {
-                level: depth
-              } : undefined,
-            })
-            ]
+              bullet:
+                depth >= 0
+                  ? {
+                      level: depth,
+                    }
+                  : undefined,
+            }),
+          ];
         case "Ordered List":
         case "Unordered List":
-          return node.children.flatMap(n => toParagraphs(n, depth + 1))
+          return node.children.flatMap((n) => toParagraphs(n, depth + 1));
         default:
-          return node.children.flatMap(n => toParagraphs(n, depth))
+          return node.children.flatMap((n) => toParagraphs(n, depth));
       }
   }
-}
+};
 
 const findImages = (node: ParseNode): ImageParseNode[] => {
   if (isImageNode(node)) {
@@ -118,47 +153,78 @@ const findImages = (node: ParseNode): ImageParseNode[] => {
     return node.children.flatMap(findImages);
   }
   return [];
+};
+
+const resize = (actual: ImageSize, max: ImageSize): ImageSize => {
+  const scaled = {...actual};
+
+  if (scaled.width > max.width) {
+    scaled.width = max.width;
+    scaled.height = (max.width * actual.height) / actual.width;
+  }
+  if (scaled.height > max.height) {
+    scaled.width = (max.height * actual.width) / actual.height;
+    scaled.height = max.height;
+  }
+
+  return scaled
 }
 
 const loadImages = (parseTree: ParseNode[]) => {
   const imageNodes = parseTree.flatMap(findImages);
 
-  const promises = imageNodes.map(node =>
-  fetch(node.src)
-    .then((resp) => resp.arrayBuffer())
-    .then(data => {
-      node.data = data;
-      return node;
-    })
-  )
-  return Promise.all(promises)
-}
+  const promises = imageNodes.map((node) =>
+    fetch(node.src)
+      .then((resp) => resp.blob())
+      .then((blob) => {
+        return Promise.all([
+          blob.arrayBuffer(),
+          new Promise<ImageSize>((resolve, reject) => {
+            const img = document.createElement("img");
+            img.src = URL.createObjectURL(blob);
+            img.onload = () => {
+              resolve({
+                height: img.height,
+                width: img.width,
+              });
+            };
+            img.onerror = () => reject("Image load error");
+          }),
+        ]);
+      })
+      .then(([buffer, attrs]) => {
+        node.data = {
+          file: buffer,
+          height: attrs.height,
+          width: attrs.width,
+        };
+      })
+  );
+  return Promise.all(promises);
+};
 
 const parseSections = (htmlString: string): Promise<ISectionOptions[]> => {
-
   const tokens = tokenize(htmlString);
-  console.log('------- STARTING PARSE --------', {
+  console.log("------- STARTING PARSE --------", {
     tokens,
-  })
-  const parseTree = tokenParser(tokens[Symbol.iterator]());
+  });
+  const parseTree = tokenParser(tokens[Symbol.iterator]()).flatMap(pruneNode);
 
-  return loadImages(parseTree)
-    .then(() => {
-      console.log({parseTree})
+  return loadImages(parseTree).then(() => {
+    console.log({ parseTree });
 
-      return [
-        {
-          properties: {
-            type: SectionType.NEXT_PAGE,
-          },
-          children:
-            parseTree.flatMap(node => {
-              return toParagraphs(node)
-            }),
-        }
-      ]
-    })
-}
+    return [
+      {
+        properties: {
+          type: SectionType.NEXT_PAGE,
+        },
+        children: parseTree.flatMap((node) => {
+          return toParagraphs(node);
+        }),
+      },
+    ];
+  });
+};
 
 const ToCSection = (): ISectionOptions => {
   return {
@@ -172,78 +238,72 @@ const ToCSection = (): ISectionOptions => {
       }),
       new TableOfContents("Table of Contents", {
         hyperlink: true,
-        headingStyleRange: '1-3'
-      })
-    ]
-  }
-}
+        headingStyleRange: "1-3",
+      }),
+    ],
+  };
+};
 
 export default function htmlDocxConverter(htmlString: string) {
-  return parseSections(htmlString)
-    .then(sections =>
+  return parseSections(htmlString).then(
+    (sections) =>
       new Document({
-    styles: {
-      default: {
-        document: {
-          run: {
-            font: 'Arial',
-            // This number is halved to get final font size
-            size: 20,
-          },
-          paragraph: {
-            spacing: {
-              // 240 is a single line, can't figure out why though. Doesn't seem to be about size
-              line: 276,
-              // This is measured in 1/20 of a pt
-              after: 240,
+        styles: {
+          default: {
+            document: {
+              run: {
+                font: "Arial",
+                // This is measured in 1/2 of a pt
+                size: 20,
+              },
+              paragraph: {
+                spacing: {
+                  // 240 is a single line, can't figure out why though. Doesn't seem to be about size
+                  line: 276,
+                  // This is measured in 1/20 of a pt
+                  after: 240,
+                },
+              },
+            },
+            title: {
+              run: {
+                // This is measured in 1/2 of a pt
+                size: 72,
+                bold: true,
+                color: "041E42",
+              },
+              paragraph: {
+                spacing: {
+                  before: 3600,
+                  line: 276,
+                  after: 120,
+                },
+              },
+            },
+            heading1: {
+              run: {
+                size: 40,
+                bold: true,
+                color: "041E42",
+              },
+              paragraph: {
+                // No fine control over border, just this
+                thematicBreak: true,
+                spacing: {
+                  line: 276,
+                  after: 120,
+                },
+              },
+              basedOn: "Normal",
+            },
+            listParagraph: {
+              paragraph: {
+                contextualSpacing: true,
+              },
             },
           },
         },
-        title: {
-          run: {
-            size: 72,
-            bold: true,
-            color: '041E42',
-          },
-          paragraph: {
-            spacing: {
-              before: 3600,
-              line: 276,
-              after: 120,
-            },
-          },
-        },
-        heading1: {
-          run: {
-            size: 40,
-            bold: true,
-            color: '041E42',
-          },
-          paragraph: {
-            // No fine control over border, just this
-            thematicBreak: true,
-            spacing: {
-              line: 276,
-              after: 120,
-            },
-          },
-          basedOn: 'Normal',
-        },
-        listParagraph: {
-          paragraph: {
-            contextualSpacing: true,
-          },
-        },
-      },
-    },
-    sections: [
-      ToCSection(),
-      ...sections,
-]
-}
-)
-    );
-
-
-
+        sections: [ToCSection(), ...sections],
+      })
+  );
 }
