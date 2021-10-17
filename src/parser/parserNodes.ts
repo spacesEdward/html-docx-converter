@@ -17,6 +17,7 @@ export interface StructureParseNodeAttributes {
   list?: boolean;
   bold?: boolean;
   italic?: boolean;
+  backgroundColour?: string;
 }
 
 export interface StructureParseNode extends ParseNodeBase {

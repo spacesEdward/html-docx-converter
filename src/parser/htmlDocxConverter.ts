@@ -1,14 +1,4 @@
-import {
-  Document,
-  HeadingLevel,
-  ImageRun,
-  ISectionOptions,
-  Paragraph,
-  ParagraphChild,
-  SectionType,
-  TableOfContents,
-  TextRun,
-} from "docx";
+import {ImageRun, ISectionOptions, Paragraph, ParagraphChild, SectionType, ShadingType, TextRun,} from "docx";
 import {tokenize} from "simple-html-tokenizer";
 import tokenParser, {pruneNode} from "./tokenParser";
 import {
@@ -19,30 +9,29 @@ import {
   ParseNodeTypes,
   StructureParseNodeAttributes,
 } from "./parserNodes";
+import {ImageSize, resize} from "./functions";
 
-export function notEmpty<TValue>(
-  value: TValue | null | undefined
-): value is TValue {
-  return value !== null && value !== undefined;
-}
-
-interface ImageSize {
-  width: number;
-  height: number;
-}
-
-const toRuns = (node: ParseNode, attributes: StructureParseNodeAttributes): ParagraphChild[] => {
+const toRuns = (
+  node: ParseNode,
+  attributes: StructureParseNodeAttributes = {}
+): ParagraphChild[] => {
   switch (node.type) {
     case ParseNodeTypes.textRun:
-      return [new TextRun({
-        text: node.content,
-        bold: attributes.bold,
-        italics: attributes.italic,
-      })];
+      return [
+        new TextRun({
+          text: node.content,
+          bold: attributes.bold,
+          italics: attributes.italic,
+          shading: attributes.backgroundColour ? {
+            type: ShadingType.CLEAR,
+            fill: attributes.backgroundColour
+          } : undefined,
+        }),
+      ];
     case ParseNodeTypes.image:
-      const data = node.data
-      if (data) {
-        const scaled = resize(data, {width: 600, height: 600})
+      if (node.data) {
+        const { data } = node;
+        const scaled = resize(data, { width: 600, height: 600 });
 
         return [
           new ImageRun({
@@ -50,16 +39,22 @@ const toRuns = (node: ParseNode, attributes: StructureParseNodeAttributes): Para
             transformation: scaled,
           }),
         ];
-      } else {
-        console.error('Attempted to convert unloaded image')
-        return [];
       }
+      console.error("Attempted to convert unloaded image");
+      return [];
+
     default:
-      return node.children.flatMap(c => toRuns(c, {...attributes, ...node.attributes}));
+      return node.children.flatMap((c) =>
+        toRuns(c, { ...attributes, ...node.attributes })
+      );
   }
 };
 
-const toParagraphs = (node: ParseNode, depth: number = -1, attributes: StructureParseNodeAttributes = {}): Paragraph[] => {
+const toParagraphs = (
+  node: ParseNode,
+  depth: number = -1,
+  attributes: StructureParseNodeAttributes = {}
+): Paragraph[] => {
   switch (node.type) {
     case ParseNodeTypes.textRun:
     case ParseNodeTypes.image:
@@ -78,21 +73,27 @@ const toParagraphs = (node: ParseNode, depth: number = -1, attributes: Structure
       if (node.attributes.headingLevel || node.attributes.paragraph) {
         return [
           new Paragraph({
-            children: node.children.flatMap(c => toRuns(c, {...attributes, ...node.attributes})),
+            children: node.children.flatMap((c) =>
+              toRuns(c, { ...attributes, ...node.attributes })
+            ),
             heading: node.attributes.headingLevel,
             bullet:
               depth >= 0
                 ? {
-                  level: depth,
-                }
+                    level: depth,
+                  }
                 : undefined,
           }),
         ];
       }
       if (node.attributes.list) {
-        return node.children.flatMap((n) => toParagraphs(n, depth + 1, {...attributes, ...node.attributes}));
+        return node.children.flatMap((n) =>
+          toParagraphs(n, depth + 1, { ...attributes, ...node.attributes })
+        );
       }
-      return node.children.flatMap((n) => toParagraphs(n, depth, {...attributes, ...node.attributes}));
+      return node.children.flatMap((n) =>
+        toParagraphs(n, depth, { ...attributes, ...node.attributes })
+      );
   }
 };
 
@@ -106,29 +107,15 @@ const findImages = (node: ParseNode): ImageParseNode[] => {
   return [];
 };
 
-const resize = (actual: ImageSize, max: ImageSize): ImageSize => {
-  const scaled = {...actual};
-
-  if (scaled.width > max.width) {
-    scaled.width = max.width;
-    scaled.height = (max.width * actual.height) / actual.width;
-  }
-  if (scaled.height > max.height) {
-    scaled.width = (max.height * actual.width) / actual.height;
-    scaled.height = max.height;
-  }
-
-  return scaled
-}
-
 const loadImages = (parseTree: ParseNode[]) => {
   const imageNodes = parseTree.flatMap(findImages);
+  // console.log('------- LOADING IMAGES --------', imageNodes);
 
   const promises = imageNodes.map((node) =>
     fetch(node.src)
       .then((resp) => resp.blob())
-      .then((blob) => {
-        return Promise.all([
+      .then((blob) =>
+        Promise.all([
           blob.arrayBuffer(),
           new Promise<ImageSize>((resolve, reject) => {
             const img = document.createElement("img");
@@ -139,123 +126,76 @@ const loadImages = (parseTree: ParseNode[]) => {
                 width: img.width,
               });
             };
-            img.onerror = () => reject("Image load error");
+            img.onerror = (err) => {
+              console.error("Failed to load image:", err);
+              resolve({ height: 10, width: 10 });
+            };
           }),
-        ]);
-      })
+        ])
+      )
       .then(([buffer, attrs]) => {
         node.data = {
           file: buffer,
           height: attrs.height,
           width: attrs.width,
         };
+        return node;
       })
   );
-  return Promise.all(promises);
+  return Promise.all(promises).then(
+    (val) =>
+      // console.log('------- LOADED IMAGES --------', val);
+      val
+  );
 };
 
-const parseSections = (htmlString: string): Promise<ISectionOptions[]> => {
+export const parseParagraphChildren = (
+  htmlString: string,
+  attributes: StructureParseNodeAttributes = {}
+): Promise<ParagraphChild[]> => {
   const tokens = tokenize(htmlString);
-  console.log("------- STARTING PARSE --------", {
-    tokens,
-  });
+
+  // console.log('------- STARTING PARSE --------', tokens);
   const parseTree = tokenParser(tokens[Symbol.iterator]()).flatMap(pruneNode);
+  // console.log('------- FINISHED PARSE --------', parseTree);
 
-  return loadImages(parseTree).then(() => {
-    console.log({ parseTree });
-
-    return [
-      {
-        properties: {
-          type: SectionType.NEXT_PAGE,
-        },
-        children: parseTree.flatMap((node) => {
-          return toParagraphs(node);
-        }),
-      },
-    ];
-  });
+  return loadImages(parseTree).then(() =>
+    parseTree.flatMap((node) => {
+      // console.log('------- STARTING CONVERT --------', parseTree);
+      const runs = toRuns(node, attributes);
+      // console.log('------- FINISHED CONVERT --------', runs);
+      return runs;
+    })
+  );
 };
 
-const ToCSection = (): ISectionOptions => {
-  return {
+export const parseSectionChildren = (
+  htmlString: string,
+  attributes: StructureParseNodeAttributes = {}
+): Promise<ISectionOptions["children"]> => {
+  const tokens = tokenize(htmlString);
+
+  // console.log('------- STARTING PARSE --------', tokens);
+  const parseTree = tokenParser(tokens[Symbol.iterator]()).flatMap(pruneNode);
+  // console.log('------- FINISHED PARSE --------', parseTree);
+
+  return loadImages(parseTree).then(() =>
+    parseTree.flatMap((node) => {
+      // console.log('------- STARTING CONVERT --------', parseTree);
+      const paragraphs = toParagraphs(node, -1, attributes);
+      // console.log('------- FINISHED CONVERT --------', paragraphs);
+      return paragraphs;
+    })
+  );
+};
+
+export const parseSection = (
+  htmlString: string,
+  attributes: StructureParseNodeAttributes = {}
+): Promise<ISectionOptions> =>
+  parseSectionChildren(htmlString, attributes).then((children) => ({
     properties: {
       type: SectionType.NEXT_PAGE,
     },
-    children: [
-      new Paragraph({
-        text: "Table of Contents",
-        heading: HeadingLevel.HEADING_1,
-      }),
-      new TableOfContents("Table of Contents", {
-        hyperlink: true,
-        headingStyleRange: "1-3",
-      }),
-    ],
-  };
-};
-
-export default function htmlDocxConverter(htmlString: string, styles: string) {
-  return parseSections(htmlString).then(
-    (sections) =>
-      new Document({
-        externalStyles: styles,
-        // styles: {
-        //   default: {
-        //     document: {
-        //       run: {
-        //         font: "Arial",
-        //         // This is measured in 1/2 of a pt
-        //         size: 20,
-        //       },
-        //       paragraph: {
-        //         spacing: {
-        //           // 240 is a single line, can't figure out why though. Doesn't seem to be about size
-        //           line: 276,
-        //           // This is measured in 1/20 of a pt
-        //           after: 240,
-        //         },
-        //       },
-        //     },
-        //     title: {
-        //       run: {
-        //         // This is measured in 1/2 of a pt
-        //         size: 72,
-        //         bold: true,
-        //         color: "041E42",
-        //       },
-        //       paragraph: {
-        //         spacing: {
-        //           before: 3600,
-        //           line: 276,
-        //           after: 120,
-        //         },
-        //       },
-        //     },
-        //     heading1: {
-        //       run: {
-        //         size: 40,
-        //         bold: true,
-        //         color: "041E42",
-        //       },
-        //       paragraph: {
-        //         // No fine control over border, just this
-        //         thematicBreak: true,
-        //         spacing: {
-        //           line: 276,
-        //           after: 120,
-        //         },
-        //       },
-        //       basedOn: "Normal",
-        //     },
-        //     listParagraph: {
-        //       paragraph: {
-        //         contextualSpacing: true,
-        //       },
-        //     },
-        //   },
-        // },
-        sections: [ToCSection(), ...sections],
-      })
-  );
-}
+    children,
+  }));

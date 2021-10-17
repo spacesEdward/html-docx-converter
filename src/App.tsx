@@ -1,15 +1,14 @@
 import React from 'react';
 import './App.css';
 import htmlContent from './content'
-import htmlDocxConverter from "./parser/htmlDocxConverter";
+import content from './content'
 import {Packer} from "docx";
 import {saveAs} from 'file-saver';
-import content from "./content";
-import {stylesXml} from "./styles";
+import DocumentCreator from "./parser/DocumentCreator";
 
 function App() {
   const handleClick = () => {
-    htmlDocxConverter(htmlContent, stylesXml)
+    DocumentCreator(htmlContent)
       .then(document => {
         Packer.toBlob(document).then((blob) => {
           // saveAs from FileSaver will download the file
